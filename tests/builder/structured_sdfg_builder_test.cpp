@@ -5,6 +5,7 @@
 #include "sdfg/builder/sdfg_builder.h"
 #include "sdfg/data_flow/library_node.h"
 #include "sdfg/element.h"
+#include "sdfg/structured_control_flow/einsum.h"
 #include "sdfg/symbolic/symbolic.h"
 
 using namespace sdfg;
@@ -213,6 +214,34 @@ TEST(StructuredSDFGBuilderTest, addMap) {
     auto child = sdfg->root().at(0);
     EXPECT_EQ(&child.first, &scope);
     EXPECT_EQ(scope.root().size(), 1);
+}
+
+TEST(StructuredSDFGBuilderTest, addEinsum) {
+    builder::StructuredSDFGBuilder builder("sdfg_1");
+
+    types::Scalar base_desc(types::PrimitiveType::Float);
+    types::Pointer desc(base_desc);
+    types::Pointer desc2(*desc.clone());
+    builder.add_container("A", desc2, true);
+    builder.add_container("b", desc, true);
+    builder.add_container("c", desc, true);
+
+    auto& root = builder.subject().root();
+    auto& scope = builder.add_einsum(root, {"A", "b"}, "c",
+                                     {{symbolic::symbol("i"), symbolic::symbol("I")},
+                                      {symbolic::symbol("j"), symbolic::symbol("J")}},
+                                     {{"i", "j"}, {"j"}}, {"i"});
+
+    auto sdfg = builder.move();
+
+    EXPECT_EQ(sdfg->name(), "sdfg_1");
+    EXPECT_EQ(sdfg->root().size(), 1);
+
+    auto einsum = dynamic_cast<structured_control_flow::Einsum*>(&sdfg->root().at(0).first);
+    EXPECT_TRUE(einsum);
+
+    auto child = sdfg->root().at(0);
+    EXPECT_EQ(&child.first, &scope);
 }
 
 TEST(StructuredSDFGBuilderTest, addForBefore) {

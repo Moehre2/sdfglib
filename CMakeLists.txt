@@ -110,6 +110,7 @@ set(SOURCE_FILES
     src/serializer/json_serializer.cpp
     src/structured_control_flow/block.cpp
     src/structured_control_flow/control_flow_node.cpp
+    src/structured_control_flow/einsum.cpp
     src/structured_control_flow/for.cpp
     src/structured_control_flow/if_else.cpp
     src/structured_control_flow/kernel.cpp

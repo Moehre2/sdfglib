@@ -1,10 +1,21 @@
 #include "sdfg/builder/structured_sdfg_builder.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "sdfg/analysis/scope_tree_analysis.h"
 #include "sdfg/codegen/language_extensions/cpp_language_extension.h"
 #include "sdfg/data_flow/library_node.h"
+#include "sdfg/exceptions.h"
+#include "sdfg/structured_control_flow/einsum.h"
 #include "sdfg/structured_control_flow/map.h"
 #include "sdfg/structured_control_flow/sequence.h"
+#include "sdfg/symbolic/symbolic.h"
+#include "sdfg/types/array.h"
+#include "sdfg/types/pointer.h"
+#include "sdfg/types/type.h"
 #include "sdfg/types/utils.h"
 
 using namespace sdfg::control_flow;
@@ -759,6 +770,94 @@ Map& StructuredSDFGBuilder::add_map(Sequence& parent, const symbolic::Symbol& in
         std::unique_ptr<Transition>(new Transition(debug_info, assignments)));
 
     return static_cast<Map&>(*parent.children_.back().get());
+};
+
+Einsum& StructuredSDFGBuilder::add_einsum(
+    Sequence& parent, const std::vector<std::string>& in_containers,
+    const std::string& out_container,
+    const std::vector<std::pair<symbolic::Symbol, symbolic::Expression>>& loops,
+    const std::vector<std::vector<std::string>>& in_indices,
+    const std::vector<std::string>& out_indices, const sdfg::symbolic::Assignments& assignments,
+    const DebugInfo& debug_info) {
+    // Check list sizes
+    if (in_containers.size() != in_indices.size()) {
+        throw InvalidSDFGException("Number of input containers != number of input indices");
+    }
+
+    // Check if einsum indices are loop indices
+    bool missing = true;
+    for (auto& indices : in_indices) {
+        for (auto& index : indices) {
+            missing = true;
+            for (auto& loop : loops) {
+                if (index == loop.first->get_name()) {
+                    missing = false;
+                    break;
+                }
+            }
+            if (missing) {
+                throw InvalidSDFGException("Einsum index " + index + " not found in loop indices");
+            }
+        }
+    }
+    for (auto& index : out_indices) {
+        missing = true;
+        for (auto& loop : loops) {
+            if (index == loop.first->get_name()) {
+                missing = false;
+                break;
+            }
+        }
+        if (missing) {
+            throw InvalidSDFGException("Einsum index " + index + " not found in loop indices");
+        }
+    }
+
+    // Check if container exist and types match einsum index access
+    for (size_t i = 0; i < in_containers.size(); ++i) {
+        auto cont = this->subject().containers_.find(in_containers[i]);
+        if (cont == this->subject().containers_.end()) {
+            throw InvalidSDFGException("Data does not exist in SDFG: " + in_containers[i]);
+        }
+        auto cont_type = cont->second->clone();
+        types::IType* type = cont_type.get();
+        for (size_t j = 0; j < in_indices[i].size(); ++j) {
+            if (auto ptr_type = dynamic_cast<types::Pointer*>(type)) {
+                type = ptr_type;
+            } else if (auto array_type = dynamic_cast<types::Array*>(type)) {
+                type = array_type;
+            } else {
+                throw InvalidSDFGException(
+                    "Cannot access container that is neither pointer nor array: " +
+                    in_containers[i]);
+            }
+        }
+    }
+    auto cont = this->subject().containers_.find(out_container);
+    if (cont == this->subject().containers_.end()) {
+        throw InvalidSDFGException("Data does not exist in SDFG: " + out_container);
+    }
+    auto cont_type = cont->second->clone();
+    types::IType* type = cont_type.get();
+    for (size_t j = 0; j < out_indices.size(); ++j) {
+        if (auto ptr_type = dynamic_cast<types::Pointer*>(type)) {
+            type = ptr_type;
+        } else if (auto array_type = dynamic_cast<types::Pointer*>(type)) {
+            type = array_type;
+        } else {
+            throw InvalidSDFGException(
+                "Cannot access container that is neither pointer nor array: " + out_container);
+        }
+    }
+
+    // Insert node
+    parent.children_.push_back(std::unique_ptr<Einsum>(
+        new Einsum(debug_info, in_containers, out_container, loops, in_indices, out_indices)));
+
+    parent.transitions_.push_back(
+        std::unique_ptr<Transition>(new Transition(debug_info, assignments)));
+
+    return static_cast<Einsum&>(*parent.children_.back().get());
 };
 
 For& StructuredSDFGBuilder::convert_while(Sequence& parent, While& loop,

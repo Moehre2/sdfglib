@@ -1,7 +1,9 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "sdfg/builder/function_builder.h"
 #include "sdfg/data_flow/library_node.h"
@@ -9,6 +11,7 @@
 #include "sdfg/sdfg.h"
 #include "sdfg/structured_control_flow/block.h"
 #include "sdfg/structured_control_flow/control_flow_node.h"
+#include "sdfg/structured_control_flow/einsum.h"
 #include "sdfg/structured_control_flow/if_else.h"
 #include "sdfg/structured_control_flow/kernel.h"
 #include "sdfg/structured_control_flow/map.h"
@@ -16,6 +19,7 @@
 #include "sdfg/structured_control_flow/sequence.h"
 #include "sdfg/structured_control_flow/while.h"
 #include "sdfg/structured_sdfg.h"
+#include "sdfg/symbolic/symbolic.h"
 #include "sdfg/types/scalar.h"
 
 using namespace sdfg::control_flow;
@@ -164,6 +168,14 @@ class StructuredSDFGBuilder : public FunctionBuilder {
                  const symbolic::Expression& num_iterations,
                  const sdfg::symbolic::Assignments& assignments = {},
                  const DebugInfo& debug_info = DebugInfo());
+
+    Einsum& add_einsum(Sequence& parent, const std::vector<std::string>& in_containers,
+                       const std::string& out_container,
+                       const std::vector<std::pair<symbolic::Symbol, symbolic::Expression>>& loops,
+                       const std::vector<std::vector<std::string>>& in_indices,
+                       const std::vector<std::string>& out_indices,
+                       const sdfg::symbolic::Assignments& assignments = {},
+                       const DebugInfo& debug_info = DebugInfo());
 
     Return& add_return(Sequence& parent, const sdfg::symbolic::Assignments& assignments = {},
                        const DebugInfo& debug_info = DebugInfo());
