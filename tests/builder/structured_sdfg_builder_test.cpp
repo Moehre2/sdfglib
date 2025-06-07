@@ -217,7 +217,7 @@ TEST(StructuredSDFGBuilderTest, addMap) {
 }
 
 TEST(StructuredSDFGBuilderTest, addEinsum) {
-    builder::StructuredSDFGBuilder builder("sdfg_1");
+    builder::StructuredSDFGBuilder builder("sdfg_1", FunctionType_CPU);
 
     types::Scalar base_desc(types::PrimitiveType::Float);
     types::Pointer desc(base_desc);
