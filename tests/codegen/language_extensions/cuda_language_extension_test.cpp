@@ -119,59 +119,6 @@ TEST(CUDALanguageExtensionTest, Declaration_PointerToArray) {
     EXPECT_EQ(result, "int (*var)[10]");
 }
 
-TEST(CUDALanguageExtensionTest, Allocation_Scalar) {
-    codegen::CUDALanguageExtension generator;
-    auto result = generator.allocation("var", types::Scalar(types::PrimitiveType::Int32));
-    EXPECT_EQ(result, "int var");
-}
-
-TEST(CUDALanguageExtensionTest, Allocation_Array) {
-    codegen::CUDALanguageExtension generator;
-    auto result = generator.allocation(
-        "var", types::Array(types::Scalar(types::PrimitiveType::Int32), symbolic::integer(10)));
-    EXPECT_EQ(result, "int var[10] __attribute__((aligned(1)))");
-}
-
-TEST(CUDALanguageExtensionTest, Allocation_Pointer) {
-    codegen::CUDALanguageExtension generator;
-    auto result =
-        generator.allocation("var", types::Pointer(types::Scalar(types::PrimitiveType::Float)));
-    EXPECT_EQ(result,
-              "float var__daisy_nvptx_internal_;\nfloat *var = &var__daisy_nvptx_internal_");
-}
-
-TEST(CUDALanguageExtensionTest, Allocation_Struct) {
-    codegen::CUDALanguageExtension generator;
-    auto result = generator.allocation("var", types::Structure("MyStruct"));
-    EXPECT_EQ(result, "MyStruct var");
-}
-
-TEST(CUDALanguageExtensionTest, Deallocation_Scalar) {
-    codegen::CUDALanguageExtension generator;
-    auto result = generator.deallocation("var", types::Scalar(types::PrimitiveType::Int32));
-    EXPECT_EQ(result, "");
-}
-
-TEST(CUDALanguageExtensionTest, Deallocation_Array) {
-    codegen::CUDALanguageExtension generator;
-    auto result = generator.deallocation(
-        "var", types::Array(types::Scalar(types::PrimitiveType::Int32), symbolic::integer(10)));
-    EXPECT_EQ(result, "");
-}
-
-TEST(CUDALanguageExtensionTest, Deallocation_Pointer) {
-    codegen::CUDALanguageExtension generator;
-    auto result =
-        generator.deallocation("var", types::Pointer(types::Scalar(types::PrimitiveType::Float)));
-    EXPECT_EQ(result, "");
-}
-
-TEST(CUDALanguageExtensionTest, Deallocation_Struct) {
-    codegen::CUDALanguageExtension generator;
-    auto result = generator.deallocation("var", types::Structure("MyStruct"));
-    EXPECT_EQ(result, "");
-}
-
 TEST(CUDALanguageExtensionTest, Typecast) {
     codegen::CUDALanguageExtension generator;
     auto result =
@@ -180,7 +127,7 @@ TEST(CUDALanguageExtensionTest, Typecast) {
 }
 
 TEST(CUDALanguageExtensionTest, SubsetToCpp_Scalar) {
-    builder::SDFGBuilder builder("sdfg");
+    builder::SDFGBuilder builder("sdfg", FunctionType_CPU);
     auto& sdfg = builder.subject();
 
     codegen::CUDALanguageExtension generator;
@@ -190,7 +137,7 @@ TEST(CUDALanguageExtensionTest, SubsetToCpp_Scalar) {
 }
 
 TEST(CUDALanguageExtensionTest, SubsetToCpp_Array) {
-    builder::SDFGBuilder builder("sdfg");
+    builder::SDFGBuilder builder("sdfg", FunctionType_CPU);
     auto& sdfg = builder.subject();
 
     codegen::CUDALanguageExtension generator;
@@ -201,7 +148,7 @@ TEST(CUDALanguageExtensionTest, SubsetToCpp_Array) {
 }
 
 TEST(CUDALanguageExtensionTest, SubsetToCpp_Struct) {
-    builder::SDFGBuilder builder("sdfg");
+    builder::SDFGBuilder builder("sdfg", FunctionType_CPU);
     auto& sdfg = builder.subject();
 
     auto& struct_def = builder.add_structure("MyStruct", false);
@@ -215,12 +162,12 @@ TEST(CUDALanguageExtensionTest, SubsetToCpp_Struct) {
 }
 
 TEST(CUDALanguageExtensionTest, LibNodeToCall) {
-    builder::SDFGBuilder builder("sdfg");
+    builder::SDFGBuilder builder("sdfg", FunctionType_CPU);
 
     auto& state = builder.add_state(true);
 
     auto& lib_node =
-        builder.add_library_node(state, data_flow::LibraryNodeType::LocalBarrier, {}, {}, true);
+        builder.add_library_node(state, data_flow::LibraryNodeCode::barrier_local, {}, {}, true);
 
     auto sdfg = builder.move();
 

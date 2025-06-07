@@ -13,7 +13,6 @@
 #include "sdfg/structured_control_flow/control_flow_node.h"
 #include "sdfg/structured_control_flow/einsum.h"
 #include "sdfg/structured_control_flow/if_else.h"
-#include "sdfg/structured_control_flow/kernel.h"
 #include "sdfg/structured_control_flow/map.h"
 #include "sdfg/structured_control_flow/return.h"
 #include "sdfg/structured_control_flow/sequence.h"
@@ -62,7 +61,7 @@ class StructuredSDFGBuilder : public FunctionBuilder {
    public:
     StructuredSDFGBuilder(std::unique_ptr<StructuredSDFG>& sdfg);
 
-    StructuredSDFGBuilder(const std::string& name);
+    StructuredSDFGBuilder(const std::string& name, FunctionType type);
 
     StructuredSDFGBuilder(const SDFG& sdfg);
 
@@ -139,21 +138,6 @@ class StructuredSDFGBuilder : public FunctionBuilder {
     While& add_while(Sequence& parent, const sdfg::symbolic::Assignments& assignments = {},
                      const DebugInfo& debug_info = DebugInfo());
 
-    Kernel& add_kernel(
-        Sequence& parent, const std::string& suffix, const DebugInfo& debug_info = DebugInfo(),
-        const symbolic::Expression& gridDim_x_init = symbolic::symbol("gridDim.x"),
-        const symbolic::Expression& gridDim_y_init = symbolic::symbol("gridDim.y"),
-        const symbolic::Expression& gridDim_z_init = symbolic::symbol("gridDim.z"),
-        const symbolic::Expression& blockDim_x_init = symbolic::symbol("blockDim.x"),
-        const symbolic::Expression& blockDim_y_init = symbolic::symbol("blockDim.y"),
-        const symbolic::Expression& blockDim_z_init = symbolic::symbol("blockDim.z"),
-        const symbolic::Expression& blockIdx_x_init = symbolic::symbol("blockIdx.x"),
-        const symbolic::Expression& blockIdx_y_init = symbolic::symbol("blockIdx.y"),
-        const symbolic::Expression& blockIdx_z_init = symbolic::symbol("blockIdx.z"),
-        const symbolic::Expression& threadIdx_x_init = symbolic::symbol("threadIdx.x"),
-        const symbolic::Expression& threadIdx_y_init = symbolic::symbol("threadIdx.y"),
-        const symbolic::Expression& threadIdx_z_init = symbolic::symbol("threadIdx.z"));
-
     Continue& add_continue(Sequence& parent, const DebugInfo& debug_info = DebugInfo());
 
     Continue& add_continue(Sequence& parent, const sdfg::symbolic::Assignments& assignments,
@@ -190,8 +174,6 @@ class StructuredSDFGBuilder : public FunctionBuilder {
 
     Sequence& parent(const ControlFlowNode& node);
 
-    Kernel& convert_into_kernel();
-
     /***** Section: Dataflow Graph *****/
 
     data_flow::AccessNode& add_access(structured_control_flow::Block& block,
@@ -210,11 +192,12 @@ class StructuredSDFGBuilder : public FunctionBuilder {
                                   const data_flow::Subset& subset,
                                   const DebugInfo& debug_info = DebugInfo());
 
-    data_flow::LibraryNode& add_library_node(
-        structured_control_flow::Block& block, const data_flow::LibraryNodeType& call,
-        const std::vector<std::pair<std::string, sdfg::types::Scalar>>& outputs,
-        const std::vector<std::pair<std::string, sdfg::types::Scalar>>& inputs,
-        const bool has_side_effect = true, const DebugInfo& debug_info = DebugInfo());
+    data_flow::LibraryNode& add_library_node(structured_control_flow::Block& block,
+                                             const data_flow::LibraryNodeCode& code,
+                                             const std::vector<std::string>& outputs,
+                                             const std::vector<std::string>& inputs,
+                                             const bool side_effect = true,
+                                             const DebugInfo& debug_info = DebugInfo());
 
     void remove_memlet(structured_control_flow::Block& block, const data_flow::Memlet& edge);
 

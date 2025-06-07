@@ -298,11 +298,11 @@ Function& StructuredSDFGBuilder::function() const {
 StructuredSDFGBuilder::StructuredSDFGBuilder(std::unique_ptr<StructuredSDFG>& sdfg)
     : FunctionBuilder(), structured_sdfg_(std::move(sdfg)) {};
 
-StructuredSDFGBuilder::StructuredSDFGBuilder(const std::string& name)
-    : FunctionBuilder(), structured_sdfg_(new StructuredSDFG(name)) {};
+StructuredSDFGBuilder::StructuredSDFGBuilder(const std::string& name, FunctionType type)
+    : FunctionBuilder(), structured_sdfg_(new StructuredSDFG(name, type)) {};
 
 StructuredSDFGBuilder::StructuredSDFGBuilder(const SDFG& sdfg)
-    : FunctionBuilder(), structured_sdfg_(new StructuredSDFG(sdfg.name())) {
+    : FunctionBuilder(), structured_sdfg_(new StructuredSDFG(sdfg.name(), sdfg.type())) {
     for (auto& entry : sdfg.structures_) {
         this->structured_sdfg_->structures_.insert({entry.first, entry.second->clone()});
     }
@@ -665,24 +665,6 @@ While& StructuredSDFGBuilder::add_while(Sequence& parent,
     return static_cast<While&>(*parent.children_.back().get());
 };
 
-Kernel& StructuredSDFGBuilder::add_kernel(
-    Sequence& parent, const std::string& suffix, const DebugInfo& debug_info,
-    const symbolic::Expression& gridDim_x_init, const symbolic::Expression& gridDim_y_init,
-    const symbolic::Expression& gridDim_z_init, const symbolic::Expression& blockDim_x_init,
-    const symbolic::Expression& blockDim_y_init, const symbolic::Expression& blockDim_z_init,
-    const symbolic::Expression& blockIdx_x_init, const symbolic::Expression& blockIdx_y_init,
-    const symbolic::Expression& blockIdx_z_init, const symbolic::Expression& threadIdx_x_init,
-    const symbolic::Expression& threadIdx_y_init, const symbolic::Expression& threadIdx_z_init) {
-    parent.children_.push_back(std::unique_ptr<Kernel>(new Kernel(
-        debug_info, suffix, gridDim_x_init, gridDim_y_init, gridDim_z_init, blockDim_x_init,
-        blockDim_y_init, blockDim_z_init, blockIdx_x_init, blockIdx_y_init, blockIdx_z_init,
-        threadIdx_x_init, threadIdx_y_init, threadIdx_z_init)));
-
-    parent.transitions_.push_back(std::unique_ptr<Transition>(new Transition(debug_info)));
-
-    return static_cast<Kernel&>(*parent.children_.back().get());
-};
-
 Continue& StructuredSDFGBuilder::add_continue(Sequence& parent, const DebugInfo& debug_info) {
     return this->add_continue(parent, symbolic::Assignments{}, debug_info);
 };
@@ -936,65 +918,10 @@ Sequence& StructuredSDFGBuilder::parent(const ControlFlowNode& node) {
             queue.push_back(&while_stmt->root());
         } else if (auto for_stmt = dynamic_cast<structured_control_flow::For*>(current)) {
             queue.push_back(&for_stmt->root());
-        } else if (auto kern_stmt = dynamic_cast<const structured_control_flow::Kernel*>(current)) {
-            queue.push_back(&kern_stmt->root());
         }
     }
 
     return this->structured_sdfg_->root();
-};
-
-Kernel& StructuredSDFGBuilder::convert_into_kernel() {
-    auto old_root = std::move(this->structured_sdfg_->root_);
-    this->structured_sdfg_->root_ = std::unique_ptr<Sequence>(new Sequence(old_root->debug_info()));
-
-    auto& new_root = this->structured_sdfg_->root();
-    auto& kernel = this->add_kernel(new_root, this->function().name());
-
-    this->insert_children(kernel.root(), *old_root, 0);
-
-    types::Scalar gridDim_x(types::PrimitiveType::Int32, types::DeviceLocation::nvptx, 0);
-    add_container(kernel.gridDim_x()->get_name(), gridDim_x);
-    types::Scalar gridDim_y(types::PrimitiveType::Int32, types::DeviceLocation::nvptx, 0);
-    add_container(kernel.gridDim_y()->get_name(), gridDim_y);
-    types::Scalar gridDim_z(types::PrimitiveType::Int32, types::DeviceLocation::nvptx, 0);
-    add_container(kernel.gridDim_z()->get_name(), gridDim_z);
-    types::Scalar blockDim_x(types::PrimitiveType::Int32, types::DeviceLocation::nvptx, 0);
-    add_container(kernel.blockDim_x()->get_name(), blockDim_x);
-    types::Scalar blockDim_y(types::PrimitiveType::Int32, types::DeviceLocation::nvptx, 0);
-    add_container(kernel.blockDim_y()->get_name(), blockDim_y);
-    types::Scalar blockDim_z(types::PrimitiveType::Int32, types::DeviceLocation::nvptx, 0);
-    add_container(kernel.blockDim_z()->get_name(), blockDim_z);
-    types::Scalar blockIdx_x(types::PrimitiveType::Int32, types::DeviceLocation::nvptx, 0);
-    add_container(kernel.blockIdx_x()->get_name(), blockIdx_x);
-    types::Scalar blockIdx_y(types::PrimitiveType::Int32, types::DeviceLocation::nvptx, 0);
-    add_container(kernel.blockIdx_y()->get_name(), blockIdx_y);
-    types::Scalar blockIdx_z(types::PrimitiveType::Int32, types::DeviceLocation::nvptx, 0);
-    add_container(kernel.blockIdx_z()->get_name(), blockIdx_z);
-    types::Scalar threadIdx_x(types::PrimitiveType::Int32, types::DeviceLocation::nvptx, 0);
-    add_container(kernel.threadIdx_x()->get_name(), threadIdx_x);
-    types::Scalar threadIdx_y(types::PrimitiveType::Int32, types::DeviceLocation::nvptx, 0);
-    add_container(kernel.threadIdx_y()->get_name(), threadIdx_y);
-    types::Scalar threadIdx_z(types::PrimitiveType::Int32, types::DeviceLocation::nvptx, 0);
-    add_container(kernel.threadIdx_z()->get_name(), threadIdx_z);
-
-    kernel.root().replace(symbolic::symbol("gridDim.x"), kernel.gridDim_x());
-    kernel.root().replace(symbolic::symbol("gridDim.y"), kernel.gridDim_y());
-    kernel.root().replace(symbolic::symbol("gridDim.z"), kernel.gridDim_z());
-
-    kernel.root().replace(symbolic::symbol("blockDim.x"), kernel.blockDim_x());
-    kernel.root().replace(symbolic::symbol("blockDim.y"), kernel.blockDim_y());
-    kernel.root().replace(symbolic::symbol("blockDim.z"), kernel.blockDim_z());
-
-    kernel.root().replace(symbolic::symbol("blockIdx.x"), kernel.blockIdx_x());
-    kernel.root().replace(symbolic::symbol("blockIdx.y"), kernel.blockIdx_y());
-    kernel.root().replace(symbolic::symbol("blockIdx.z"), kernel.blockIdx_z());
-
-    kernel.root().replace(symbolic::symbol("threadIdx.x"), kernel.threadIdx_x());
-    kernel.root().replace(symbolic::symbol("threadIdx.y"), kernel.threadIdx_y());
-    kernel.root().replace(symbolic::symbol("threadIdx.z"), kernel.threadIdx_z());
-
-    return kernel;
 };
 
 /***** Section: Dataflow Graph *****/
@@ -1117,7 +1044,7 @@ data_flow::Memlet& StructuredSDFGBuilder::add_memlet(
                dynamic_cast<data_flow::AccessNode*>(&dst)) {
         auto& src_node = dynamic_cast<data_flow::Tasklet&>(src);
         auto& dst_node = dynamic_cast<data_flow::AccessNode&>(dst);
-        if (src_conn != src_node.outputs()[0].first) {
+        if (src_conn != src_node.output().first) {
             throw InvalidSDFGException("src_conn must match tasklet output name");
         }
         if (dst_conn != "void") {
@@ -1137,7 +1064,7 @@ data_flow::Memlet& StructuredSDFGBuilder::add_memlet(
         }
         bool found = false;
         for (auto& input : dst_node.inputs()) {
-            if (input.first == dst_conn) {
+            if (input == dst_conn) {
                 found = true;
                 break;
             }
@@ -1159,7 +1086,7 @@ data_flow::Memlet& StructuredSDFGBuilder::add_memlet(
         }
         bool found = false;
         for (auto& output : src_node.outputs()) {
-            if (output.first == src_conn) {
+            if (output == src_conn) {
                 found = true;
                 break;
             }
@@ -1186,15 +1113,13 @@ data_flow::Memlet& StructuredSDFGBuilder::add_memlet(
 };
 
 data_flow::LibraryNode& StructuredSDFGBuilder::add_library_node(
-    structured_control_flow::Block& block, const data_flow::LibraryNodeType& call,
-    const std::vector<std::pair<std::string, sdfg::types::Scalar>>& outputs,
-    const std::vector<std::pair<std::string, sdfg::types::Scalar>>& inputs,
-    const bool has_side_effect, const DebugInfo& debug_info) {
+    structured_control_flow::Block& block, const data_flow::LibraryNodeCode& code,
+    const std::vector<std::string>& outputs, const std::vector<std::string>& inputs,
+    const bool side_effect, const DebugInfo& debug_info) {
     auto vertex = boost::add_vertex(block.dataflow_->graph_);
     auto res = block.dataflow_->nodes_.insert(
-        {vertex,
-         std::unique_ptr<data_flow::LibraryNode>(new data_flow::LibraryNode(
-             debug_info, vertex, block.dataflow(), outputs, inputs, call, has_side_effect))});
+        {vertex, std::unique_ptr<data_flow::LibraryNode>(new data_flow::LibraryNode(
+                     debug_info, vertex, block.dataflow(), code, outputs, inputs, side_effect))});
 
     return dynamic_cast<data_flow::LibraryNode&>(*(res.first->second));
 }
@@ -1310,7 +1235,7 @@ data_flow::AccessNode& StructuredSDFGBuilder::symbolic_expression_to_dataflow(
 
         // Determine type
         types::Scalar sym_type = types::Scalar(types::PrimitiveType::Void);
-        if (symbolic::is_nvptx(sym)) {
+        if (symbolic::is_nv(sym)) {
             sym_type = types::Scalar(types::PrimitiveType::Int32);
         } else {
             sym_type = static_cast<const types::Scalar&>(sdfg.type(sym->get_name()));

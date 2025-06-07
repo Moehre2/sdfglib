@@ -12,7 +12,6 @@
 #include "sdfg/structured_control_flow/block.h"
 #include "sdfg/structured_control_flow/for.h"
 #include "sdfg/structured_control_flow/if_else.h"
-#include "sdfg/structured_control_flow/kernel.h"
 #include "sdfg/structured_control_flow/return.h"
 #include "sdfg/structured_control_flow/sequence.h"
 #include "sdfg/structured_control_flow/while.h"
@@ -37,6 +36,7 @@ nlohmann::json JSONSerializer::serialize(std::unique_ptr<sdfg::StructuredSDFG>& 
     nlohmann::json j;
 
     j["name"] = sdfg->name();
+    j["type"] = std::string(sdfg->type().value());
 
     j["structures"] = nlohmann::json::array();
     for (const auto& structure_name : sdfg->structures()) {
@@ -88,11 +88,11 @@ void JSONSerializer::dataflow_to_json(nlohmann::json& j, const data_flow::DataFl
         node_json["debug_info"] = nlohmann::json::object();
         debug_info_to_json(node_json["debug_info"], node.debug_info());
 
-        if (auto code_node = dynamic_cast<const data_flow::Tasklet*>(&node)) {
+        if (auto tasklet = dynamic_cast<const data_flow::Tasklet*>(&node)) {
             node_json["type"] = "tasklet";
-            node_json["code"] = code_node->code();
+            node_json["code"] = tasklet->code();
             node_json["inputs"] = nlohmann::json::array();
-            for (auto& input : code_node->inputs()) {
+            for (auto& input : tasklet->inputs()) {
                 nlohmann::json input_json;
                 nlohmann::json type_json;
                 type_to_json(type_json, input.second);
@@ -100,40 +100,26 @@ void JSONSerializer::dataflow_to_json(nlohmann::json& j, const data_flow::DataFl
                 input_json["name"] = input.first;
                 node_json["inputs"].push_back(input_json);
             }
-            node_json["outputs"] = nlohmann::json::array();
-            for (auto& output : code_node->outputs()) {
-                nlohmann::json output_json;
-                nlohmann::json type_json;
-                type_to_json(type_json, output.second);
-                output_json["type"] = type_json;
-                output_json["name"] = output.first;
-                node_json["outputs"].push_back(output_json);
-            }
-            // node_json["conditional"] = code_node->is_conditional();
-            // if (code_node->is_conditional()) {
-            //     node_json["condition"] = dumps_expression(code_node->condition());
+            node_json["output"] = nlohmann::json::object();
+            node_json["output"]["name"] = tasklet->output().first;
+            nlohmann::json type_json;
+            type_to_json(type_json, tasklet->output().second);
+            node_json["output"]["type"] = type_json;
+            // node_json["conditional"] = tasklet->is_conditional();
+            // if (tasklet->is_conditional()) {
+            //     node_json["condition"] = dumps_expression(tasklet->condition());
             // }
         } else if (auto lib_node = dynamic_cast<const data_flow::LibraryNode*>(&node)) {
             node_json["type"] = "library_node";
-            node_json["call"] = lib_node->call();
-            node_json["has_side_effect"] = lib_node->has_side_effect();
+            node_json["code"] = lib_node->code();
+            node_json["side_effect"] = lib_node->side_effect();
             node_json["inputs"] = nlohmann::json::array();
             for (auto& input : lib_node->inputs()) {
-                nlohmann::json input_json;
-                nlohmann::json type_json;
-                type_to_json(type_json, input.second);
-                input_json["type"] = type_json;
-                input_json["name"] = input.first;
-                node_json["inputs"].push_back(input_json);
+                node_json["inputs"].push_back(input);
             }
             node_json["outputs"] = nlohmann::json::array();
             for (auto& output : lib_node->outputs()) {
-                nlohmann::json output_json;
-                nlohmann::json type_json;
-                type_to_json(type_json, output.second);
-                output_json["type"] = type_json;
-                output_json["name"] = output.first;
-                node_json["outputs"].push_back(output_json);
+                node_json["outputs"].push_back(output);
             }
         } else if (auto code_node = dynamic_cast<const data_flow::AccessNode*>(&node)) {
             node_json["type"] = "access_node";
@@ -246,21 +232,6 @@ void JSONSerializer::continue_node_to_json(nlohmann::json& j,
     debug_info_to_json(j["debug_info"], continue_node.debug_info());
 }
 
-void JSONSerializer::kernel_to_json(nlohmann::json& j,
-                                    const structured_control_flow::Kernel& kernel_node) {
-    j["type"] = "kernel";
-    j["element_id"] = kernel_node.element_id();
-
-    j["debug_info"] = nlohmann::json::object();
-    debug_info_to_json(j["debug_info"], kernel_node.debug_info());
-
-    j["suffix"] = kernel_node.suffix();
-
-    nlohmann::json body_json;
-    sequence_to_json(body_json, kernel_node.root());
-    j["root"] = body_json;
-}
-
 void JSONSerializer::map_to_json(nlohmann::json& j, const structured_control_flow::Map& map_node) {
     j["type"] = "map";
     j["element_id"] = map_node.element_id();
@@ -312,9 +283,6 @@ void JSONSerializer::sequence_to_json(nlohmann::json& j,
             if_else_to_json(child_json, *condition_node);
         } else if (auto while_node = dynamic_cast<const structured_control_flow::While*>(&child)) {
             while_node_to_json(child_json, *while_node);
-        } else if (auto kernel_node =
-                       dynamic_cast<const structured_control_flow::Kernel*>(&child)) {
-            kernel_to_json(child_json, *kernel_node);
         } else if (auto return_node =
                        dynamic_cast<const structured_control_flow::Return*>(&child)) {
             return_node_to_json(child_json, *return_node);
@@ -355,33 +323,32 @@ void JSONSerializer::type_to_json(nlohmann::json& j, const types::IType& type) {
     if (auto scalar_type = dynamic_cast<const types::Scalar*>(&type)) {
         j["type"] = "scalar";
         j["primitive_type"] = scalar_type->primitive_type();
-        j["address_space"] = scalar_type->address_space();
+        j["storage_type"] = std::string(scalar_type->storage_type().value());
         j["initializer"] = scalar_type->initializer();
-        j["device_location"] = scalar_type->device_location();
+        j["alignment"] = scalar_type->alignment();
     } else if (auto array_type = dynamic_cast<const types::Array*>(&type)) {
         j["type"] = "array";
         nlohmann::json element_type_json;
         type_to_json(element_type_json, array_type->element_type());
         j["element_type"] = element_type_json;
         j["num_elements"] = expression(array_type->num_elements());
-        j["address_space"] = array_type->address_space();
+        j["storage_type"] = std::string(array_type->storage_type().value());
         j["initializer"] = array_type->initializer();
-        j["device_location"] = array_type->device_location();
         j["alignment"] = array_type->alignment();
     } else if (auto pointer_type = dynamic_cast<const types::Pointer*>(&type)) {
         j["type"] = "pointer";
         nlohmann::json pointee_type_json;
         type_to_json(pointee_type_json, pointer_type->pointee_type());
         j["pointee_type"] = pointee_type_json;
-        j["address_space"] = pointer_type->address_space();
+        j["storage_type"] = std::string(pointer_type->storage_type().value());
         j["initializer"] = pointer_type->initializer();
-        j["device_location"] = pointer_type->device_location();
+        j["alignment"] = pointer_type->alignment();
     } else if (auto structure_type = dynamic_cast<const types::Structure*>(&type)) {
         j["type"] = "structure";
         j["name"] = structure_type->name();
-        j["address_space"] = structure_type->address_space();
+        j["storage_type"] = std::string(structure_type->storage_type().value());
         j["initializer"] = structure_type->initializer();
-        j["device_location"] = structure_type->device_location();
+        j["alignment"] = structure_type->alignment();
     } else if (auto function_type = dynamic_cast<const types::Function*>(&type)) {
         j["type"] = "function";
         nlohmann::json return_type_json;
@@ -394,9 +361,9 @@ void JSONSerializer::type_to_json(nlohmann::json& j, const types::IType& type) {
             j["params"].push_back(param_json);
         }
         j["is_var_arg"] = function_type->is_var_arg();
-        j["address_space"] = function_type->address_space();
+        j["storage_type"] = std::string(function_type->storage_type().value());
         j["initializer"] = function_type->initializer();
-        j["device_location"] = function_type->device_location();
+        j["alignment"] = function_type->alignment();
     } else {
         throw std::runtime_error("Unknown type");
     }
@@ -430,8 +397,18 @@ void JSONSerializer::debug_info_to_json(nlohmann::json& j, const DebugInfo& debu
 std::unique_ptr<StructuredSDFG> JSONSerializer::deserialize(nlohmann::json& j) {
     assert(j.contains("name"));
     assert(j["name"].is_string());
+    assert(j.contains("type"));
+    assert(j["type"].is_string());
 
-    builder::StructuredSDFGBuilder builder(j["name"]);
+    FunctionType type{"Unknown"};
+    if (j["type"] == FunctionType_CPU.value()) {
+        type = FunctionType_CPU;
+    } else if (j["type"] == FunctionType_NV_GLOBAL.value()) {
+        type = FunctionType_NV_GLOBAL;
+    } else {
+        throw std::runtime_error("Unknown function type");
+    }
+    builder::StructuredSDFGBuilder builder(j["name"], type);
 
     // deserialize structures
     assert(j.contains("structures"));
@@ -535,26 +512,40 @@ void JSONSerializer::json_to_dataflow(const nlohmann::json& j,
             assert(node["code"].is_number_integer());
             assert(node.contains("inputs"));
             assert(node["inputs"].is_array());
-            assert(node.contains("outputs"));
-            assert(node["outputs"].is_array());
-            auto outputs = json_to_arguments(node["outputs"]);
-            assert(outputs.size() == 1);
+            assert(node.contains("output"));
+            assert(node["output"].is_object());
+            assert(node["output"].contains("name"));
+            assert(node["output"].contains("type"));
             auto inputs = json_to_arguments(node["inputs"]);
-            auto& tasklet = builder.add_tasklet(parent, node["code"], outputs.at(0), inputs,
-                                                json_to_debug_info(node["debug_info"]));
+
+            auto output_name = node["output"]["name"];
+            auto output_type = json_to_type(node["output"]["type"]);
+            auto& output_type_scalar = dynamic_cast<types::Scalar&>(*output_type);
+
+            auto& tasklet =
+                builder.add_tasklet(parent, node["code"], {output_name, output_type_scalar}, inputs,
+                                    json_to_debug_info(node["debug_info"]));
             tasklet.element_id_ = node["element_id"];
             nodes_map.insert({node["element_id"], tasklet});
         } else if (type == "library_node") {
-            assert(node.contains("call"));
+            assert(node.contains("code"));
             assert(node.contains("inputs"));
             assert(node["inputs"].is_array());
             assert(node.contains("outputs"));
             assert(node["outputs"].is_array());
-            auto outputs = json_to_arguments(node["outputs"]);
-            auto inputs = json_to_arguments(node["inputs"]);
-            auto& lib_node = builder.add_library_node(parent, node["call"], outputs, inputs,
-                                                      node["has_side_effect"],
-                                                      json_to_debug_info(node["debug_info"]));
+            std::vector<std::string> outputs;
+            for (const auto& output : node["outputs"]) {
+                assert(output.is_string());
+                outputs.push_back(output);
+            }
+            std::vector<std::string> inputs;
+            for (const auto& input : node["inputs"]) {
+                assert(input.is_string());
+                inputs.push_back(input);
+            }
+            auto& lib_node =
+                builder.add_library_node(parent, node["code"], outputs, inputs, node["side_effect"],
+                                         json_to_debug_info(node["debug_info"]));
             lib_node.element_id_ = node["element_id"];
             nodes_map.insert({node["element_id"], lib_node});
         } else if (type == "access_node") {
@@ -650,8 +641,6 @@ void JSONSerializer::json_to_sequence(const nlohmann::json& j,
                 json_to_break_node(child, builder, sequence, assignments);
             } else if (child["type"] == "continue") {
                 json_to_continue_node(child, builder, sequence, assignments);
-            } else if (child["type"] == "kernel") {
-                json_to_kernel_node(child, builder, sequence, assignments);
             } else if (child["type"] == "return") {
                 json_to_return_node(child, builder, sequence, assignments);
             } else if (child["type"] == "map") {
@@ -800,27 +789,6 @@ void JSONSerializer::json_to_continue_node(const nlohmann::json& j,
     node.element_id_ = j["element_id"];
 }
 
-void JSONSerializer::json_to_kernel_node(const nlohmann::json& j,
-                                         builder::StructuredSDFGBuilder& builder,
-                                         structured_control_flow::Sequence& parent,
-                                         symbolic::Assignments& assignments) {
-    assert(j.contains("type"));
-    assert(j["type"].is_string());
-    assert(j["type"] == "kernel");
-    assert(j.contains("suffix"));
-    assert(j["suffix"].is_string());
-    assert(j.contains("root"));
-    assert(j["root"].is_object());
-    auto& kernel_node =
-        builder.add_kernel(parent, j["suffix"], json_to_debug_info(j["debug_info"]));
-    kernel_node.element_id_ = j["element_id"];
-
-    assert(j["root"].contains("type"));
-    assert(j["root"]["type"].is_string());
-    assert(j["root"]["type"] == "sequence");
-    json_to_sequence(j["root"], builder, kernel_node.root());
-}
-
 void JSONSerializer::json_to_map_node(const nlohmann::json& j,
                                       builder::StructuredSDFGBuilder& builder,
                                       structured_control_flow::Sequence& parent,
@@ -865,14 +833,14 @@ std::unique_ptr<types::IType> JSONSerializer::json_to_type(const nlohmann::json&
             // Deserialize scalar type
             assert(j.contains("primitive_type"));
             types::PrimitiveType primitive_type = j["primitive_type"];
-            assert(j.contains("device_location"));
-            types::DeviceLocation device_location = j["device_location"];
-            assert(j.contains("address_space"));
-            uint address_space = j["address_space"];
+            assert(j.contains("storage_type"));
+            types::StorageType storage_type{j["storage_type"].get<std::string_view>()};
             assert(j.contains("initializer"));
             std::string initializer = j["initializer"];
-            return std::make_unique<types::Scalar>(primitive_type, device_location, address_space,
-                                                   initializer);
+            assert(j.contains("alignment"));
+            size_t alignment = j["alignment"];
+            return std::make_unique<types::Scalar>(storage_type, alignment, initializer,
+                                                   primitive_type);
         } else if (j["type"] == "array") {
             // Deserialize array type
             assert(j.contains("element_type"));
@@ -881,40 +849,37 @@ std::unique_ptr<types::IType> JSONSerializer::json_to_type(const nlohmann::json&
             std::string num_elements_str = j["num_elements"];
             // Convert num_elements_str to symbolic::Expression
             SymEngine::Expression num_elements(num_elements_str);
-            assert(j.contains("address_space"));
-            uint address_space = j["address_space"];
+            assert(j.contains("storage_type"));
+            types::StorageType storage_type{j["storage_type"].get<std::string_view>()};
             assert(j.contains("initializer"));
             std::string initializer = j["initializer"];
-            assert(j.contains("device_location"));
-            types::DeviceLocation device_location = j["device_location"];
             assert(j.contains("alignment"));
             size_t alignment = j["alignment"];
-            return std::make_unique<types::Array>(*member_type, num_elements, device_location,
-                                                  address_space, initializer, alignment);
+            return std::make_unique<types::Array>(storage_type, alignment, initializer,
+                                                  *member_type, num_elements);
         } else if (j["type"] == "pointer") {
             // Deserialize pointer type
             assert(j.contains("pointee_type"));
             std::unique_ptr<types::IType> pointee_type = json_to_type(j["pointee_type"]);
-            assert(j.contains("address_space"));
-            uint address_space = j["address_space"];
+            assert(j.contains("storage_type"));
+            types::StorageType storage_type{j["storage_type"].get<std::string_view>()};
             assert(j.contains("initializer"));
             std::string initializer = j["initializer"];
-            assert(j.contains("device_location"));
-            types::DeviceLocation device_location = j["device_location"];
-            return std::make_unique<types::Pointer>(*pointee_type, device_location, address_space,
-                                                    initializer);
+            assert(j.contains("alignment"));
+            size_t alignment = j["alignment"];
+            return std::make_unique<types::Pointer>(storage_type, alignment, initializer,
+                                                    *pointee_type);
         } else if (j["type"] == "structure") {
             // Deserialize structure type
             assert(j.contains("name"));
             std::string name = j["name"];
-            assert(j.contains("address_space"));
-            uint address_space = j["address_space"];
+            assert(j.contains("storage_type"));
+            types::StorageType storage_type{j["storage_type"].get<std::string_view>()};
             assert(j.contains("initializer"));
             std::string initializer = j["initializer"];
-            assert(j.contains("device_location"));
-            types::DeviceLocation device_location = j["device_location"];
-            return std::make_unique<types::Structure>(name, device_location, address_space,
-                                                      initializer);
+            assert(j.contains("alignment"));
+            size_t alignment = j["alignment"];
+            return std::make_unique<types::Structure>(storage_type, alignment, initializer, name);
         } else if (j["type"] == "function") {
             // Deserialize function type
             assert(j.contains("return_type"));
@@ -926,14 +891,14 @@ std::unique_ptr<types::IType> JSONSerializer::json_to_type(const nlohmann::json&
             }
             assert(j.contains("is_var_arg"));
             bool is_var_arg = j["is_var_arg"];
-            assert(j.contains("address_space"));
-            uint address_space = j["address_space"];
+            assert(j.contains("storage_type"));
+            types::StorageType storage_type{j["storage_type"].get<std::string_view>()};
             assert(j.contains("initializer"));
             std::string initializer = j["initializer"];
-            assert(j.contains("device_location"));
-            types::DeviceLocation device_location = j["device_location"];
-            auto function = std::make_unique<types::Function>(
-                *return_type, is_var_arg, device_location, address_space, initializer);
+            assert(j.contains("alignment"));
+            size_t alignment = j["alignment"];
+            auto function = std::make_unique<types::Function>(storage_type, alignment, initializer,
+                                                              *return_type, is_var_arg);
             for (const auto& param : params) {
                 function->add_param(*param);
             }

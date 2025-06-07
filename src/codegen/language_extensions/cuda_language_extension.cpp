@@ -388,13 +388,13 @@ std::string CUDALanguageExtension::primitive_type(const types::PrimitiveType pri
 };
 
 std::string CUDALanguageExtension::declaration(const std::string& name, const types::IType& type,
-                                               bool use_initializer) {
+                                               bool use_initializer, bool use_alignment) {
     std::stringstream val;
 
     if (auto scalar_type = dynamic_cast<const types::Scalar*>(&type)) {
-        if (type.address_space() == 3) {
+        if (scalar_type->storage_type() == types::StorageType_NV_Shared) {
             val << "__shared__ ";
-        } else if (type.address_space() == 4) {
+        } else if (scalar_type->storage_type() == types::StorageType_NV_Constant) {
             val << "__constant__ ";
         }
         val << primitive_type(scalar_type->primitive_type());
@@ -417,9 +417,9 @@ std::string CUDALanguageExtension::declaration(const std::string& name, const ty
     } else if (auto ref_type = dynamic_cast<const Reference*>(&type)) {
         val << declaration("&" + name, ref_type->reference_type());
     } else if (auto structure_type = dynamic_cast<const types::Structure*>(&type)) {
-        if (type.address_space() == 3) {
+        if (structure_type->storage_type() == types::StorageType_NV_Shared) {
             val << "__shared__ ";
-        } else if (type.address_space() == 4) {
+        } else if (structure_type->storage_type() == types::StorageType_NV_Constant) {
             val << "__constant__ ";
         }
         val << structure_type->name();
@@ -442,42 +442,15 @@ std::string CUDALanguageExtension::declaration(const std::string& name, const ty
         throw std::runtime_error("Unknown declaration type");
     }
 
+    if (use_alignment && type.alignment() > 0) {
+        val << " __attribute__((aligned(" << type.alignment() << ")))";
+    }
+
     if (use_initializer && !type.initializer().empty()) {
         val << " = " << type.initializer();
     }
 
     return val.str();
-};
-
-std::string CUDALanguageExtension::allocation(const std::string& name, const types::IType& type) {
-    std::stringstream val;
-
-    if (auto scalar_type = dynamic_cast<const types::Scalar*>(&type)) {
-        val << declaration(name, *scalar_type);
-    } else if (auto array_type = dynamic_cast<const types::Array*>(&type)) {
-        val << declaration(name + "[" + this->expression(array_type->num_elements()) + "]",
-                           array_type->element_type());
-        val << " __attribute__((aligned(" << array_type->alignment() << ")))";
-    } else if (auto pointer_type = dynamic_cast<const types::Pointer*>(&type)) {
-        std::string pointee_name = name + "__daisy_nvptx_internal_";
-        val << declaration(pointee_name, pointer_type->pointee_type());
-        val << ";";
-        val << std::endl;
-
-        val << declaration(name, type);
-        val << " = ";
-        val << "&" << pointee_name;
-    } else if (auto structure_type = dynamic_cast<const types::Structure*>(&type)) {
-        val << declaration(name, *structure_type);
-    } else {
-        throw std::runtime_error("Unknown allocation type");
-    }
-
-    return val.str();
-};
-
-std::string CUDALanguageExtension::deallocation(const std::string& name, const types::IType& type) {
-    return "";
 };
 
 std::string CUDALanguageExtension::type_cast(const std::string& name, const types::IType& type) {
@@ -570,9 +543,9 @@ std::string CUDALanguageExtension::tasklet(const data_flow::Tasklet& tasklet) {
 };
 
 std::string CUDALanguageExtension::library_node(const data_flow::LibraryNode& libnode) {
-    data_flow::LibraryNodeType lib_node_type = libnode.call();
+    data_flow::LibraryNodeCode lib_node_type = libnode.code();
     switch (lib_node_type) {
-        case sdfg::data_flow::LibraryNodeType::LocalBarrier:
+        case sdfg::data_flow::LibraryNodeCode::barrier_local:
             return "__syncthreads();";
         default:
             throw std::runtime_error("Unsupported library node type");
