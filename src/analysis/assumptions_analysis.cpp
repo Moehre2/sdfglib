@@ -3,6 +3,7 @@
 #include <utility>
 #include <vector>
 
+#include "sdfg/structured_control_flow/einsum.h"
 #include "sdfg/structured_control_flow/sequence.h"
 #include "sdfg/symbolic/analysis.h"
 #include "sdfg/symbolic/assumptions.h"
@@ -40,6 +41,9 @@ void AssumptionsAnalysis::traverse(structured_control_flow::Sequence& root) {
         } else if (auto map_stmt = dynamic_cast<const structured_control_flow::Map*>(current)) {
             this->visit_map(map_stmt);
             queue.push_back(&map_stmt->root());
+        } else if (auto einsum_stmt =
+                       dynamic_cast<const structured_control_flow::Einsum*>(current)) {
+            this->visit_einsum(einsum_stmt);
         }
     }
 };
@@ -136,6 +140,11 @@ void AssumptionsAnalysis::visit_map(const structured_control_flow::Map* map) {
 
     body_assumptions[sym].lower_bound(symbolic::zero());
     body_assumptions[sym].upper_bound(num_iterations);
+}
+
+void AssumptionsAnalysis::visit_einsum(const structured_control_flow::Einsum* einsum) {
+    // TODO: mt einsum
+    return;
 }
 
 void AssumptionsAnalysis::run(analysis::AnalysisManager& analysis_manager) {

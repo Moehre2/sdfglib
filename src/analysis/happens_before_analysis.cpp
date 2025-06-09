@@ -8,6 +8,7 @@
 
 #include "sdfg/analysis/analysis.h"
 #include "sdfg/data_flow/memlet.h"
+#include "sdfg/structured_control_flow/einsum.h"
 #include "sdfg/structured_control_flow/for.h"
 #include "sdfg/structured_control_flow/sequence.h"
 #include "sdfg/structured_sdfg.h"
@@ -500,6 +501,14 @@ void HappensBeforeAnalysis::visit_map(
     }
 }
 
+void HappensBeforeAnalysis::visit_einsum(
+    analysis::Users& users, structured_control_flow::Einsum& einsum,
+    std::unordered_set<User*>& open_reads,
+    std::unordered_map<User*, std::unordered_set<User*>>& open_reads_after_write,
+    std::unordered_map<User*, std::unordered_set<User*>>& closed_reads_after_write) {
+    // TODO: mt einsum
+}
+
 void HappensBeforeAnalysis::visit_sequence(
     analysis::Users& users, structured_control_flow::Sequence& sequence,
     std::unordered_set<User*>& open_reads,
@@ -528,6 +537,9 @@ void HappensBeforeAnalysis::visit_sequence(
                            closed_reads_after_write);
         } else if (auto map = dynamic_cast<structured_control_flow::Map*>(&child.first)) {
             visit_map(users, *map, open_reads, open_reads_after_writes, closed_reads_after_write);
+        } else if (auto einsum = dynamic_cast<structured_control_flow::Einsum*>(&child.first)) {
+            visit_einsum(users, *einsum, open_reads, open_reads_after_writes,
+                         closed_reads_after_write);
         }
 
         // handle transitions read

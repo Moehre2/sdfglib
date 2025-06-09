@@ -5,6 +5,7 @@
 
 #include "sdfg/analysis/analysis.h"
 #include "sdfg/analysis/users.h"
+#include "sdfg/structured_control_flow/einsum.h"
 #include "sdfg/structured_control_flow/for.h"
 #include "sdfg/structured_control_flow/if_else.h"
 #include "sdfg/structured_control_flow/map.h"
@@ -71,6 +72,12 @@ class HappensBeforeAnalysis : public Analysis {
                    std::unordered_set<User*>& open_reads,
                    std::unordered_map<User*, std::unordered_set<User*>>& open_reads_after_writes,
                    std::unordered_map<User*, std::unordered_set<User*>>& closed_reads_after_write);
+
+    void visit_einsum(
+        analysis::Users& users, structured_control_flow::Einsum& einsum,
+        std::unordered_set<User*>& open_reads,
+        std::unordered_map<User*, std::unordered_set<User*>>& open_reads_after_write,
+        std::unordered_map<User*, std::unordered_set<User*>>& closed_reads_after_write);
 
     /****** Public API ******/
 

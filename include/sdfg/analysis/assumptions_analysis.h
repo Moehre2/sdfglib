@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "sdfg/analysis/analysis.h"
+#include "sdfg/structured_control_flow/einsum.h"
 #include "sdfg/structured_control_flow/map.h"
 #include "sdfg/symbolic/analysis.h"
 #include "sdfg/symbolic/assumptions.h"
@@ -32,6 +33,8 @@ class AssumptionsAnalysis : public Analysis {
     void visit_for(structured_control_flow::For* for_loop);
 
     void visit_map(const structured_control_flow::Map* map);
+
+    void visit_einsum(const structured_control_flow::Einsum* einsum);
 
    protected:
     void run(analysis::AnalysisManager& analysis_manager) override;
